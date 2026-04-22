@@ -103,6 +103,13 @@ export default function App() {
       html2canvas: {
         scale: 2,
         onclone: (doc) => {
+          // Replace native checkbox inputs with Unicode text to avoid
+          // display-p3 accent-color issues in html2canvas rendering.
+          doc.querySelectorAll('input[type="checkbox"]').forEach((cb) => {
+            const span = doc.createElement('span')
+            span.textContent = cb.checked ? '\u2611 ' : '\u2610 '
+            cb.replaceWith(span)
+          })
           const win = doc.defaultView
           if (win && win !== window) patchGCS(win)
         },
