@@ -57,6 +57,45 @@ export default function App() {
     if (!previewRef.current) return
     setDownloading(true)
 
+    // html2canvas can't parse display-p3 color() functions that modern
+    // browsers (Safari/macOS) return from getComputedStyle. Patch the
+    // global getComputedStyle for the duration of PDF generation so
+    // html2canvas always sees sRGB values — regardless of which window
+    // reference it uses internally.
+    const colorRe = /color\(display-p3\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/g
+    const toRGB = (val) => {
+      if (typeof val !== 'string' || !val.includes('color(')) return val
+      return val.replace(colorRe, (_, r, g, b, a) => {
+        const ri = Math.round(parseFloat(r) * 255)
+        const gi = Math.round(parseFloat(g) * 255)
+        const bi = Math.round(parseFloat(b) * 255)
+        return a !== undefined && parseFloat(a) < 1
+          ? `rgba(${ri}, ${gi}, ${bi}, ${a})`
+          : `rgb(${ri}, ${gi}, ${bi})`
+      })
+    }
+    const patchGCS = (win) => {
+      const orig = win.getComputedStyle
+      win.getComputedStyle = function (el, pseudo) {
+        const cs = orig.call(this, el, pseudo)
+        return new Proxy(cs, {
+          get(target, prop) {
+            if (prop === 'getPropertyValue') {
+              return (p) => toRGB(target.getPropertyValue(p))
+            }
+            const v = target[prop]
+            if (typeof v === 'function') return v.bind(target)
+            if (typeof v === 'string') return toRGB(v)
+            return v
+          },
+        })
+      }
+      return orig
+    }
+
+    // Patch both the main window and (via onclone) the iframe window
+    const origGCS = patchGCS(window)
+
     const opt = {
       margin: [10, 10, 10, 10],
       filename: getFilename(),
@@ -64,40 +103,8 @@ export default function App() {
       html2canvas: {
         scale: 2,
         onclone: (doc) => {
-          // html2canvas can't parse display-p3 color() functions that
-          // modern browsers (Safari/macOS) return from getComputedStyle.
-          // Setting inline rgb() styles doesn't help because the browser
-          // converts them back to display-p3 on wide-gamut displays.
-          // Fix: monkey-patch getComputedStyle on the cloned document's
-          // window so html2canvas always sees sRGB values.
-          const colorRe = /color\(display-p3\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/g
-          const toRGB = (val) => {
-            if (typeof val !== 'string' || !val.includes('color(')) return val
-            return val.replace(colorRe, (_, r, g, b, a) => {
-              const ri = Math.round(parseFloat(r) * 255)
-              const gi = Math.round(parseFloat(g) * 255)
-              const bi = Math.round(parseFloat(b) * 255)
-              return a !== undefined && parseFloat(a) < 1
-                ? `rgba(${ri}, ${gi}, ${bi}, ${a})`
-                : `rgb(${ri}, ${gi}, ${bi})`
-            })
-          }
-          const win = doc.defaultView || window
-          const origGetComputedStyle = win.getComputedStyle
-          win.getComputedStyle = function (el, pseudo) {
-            const cs = origGetComputedStyle.call(this, el, pseudo)
-            return new Proxy(cs, {
-              get(target, prop) {
-                if (prop === 'getPropertyValue') {
-                  return (p) => toRGB(target.getPropertyValue(p))
-                }
-                const v = target[prop]
-                if (typeof v === 'function') return v.bind(target)
-                if (typeof v === 'string') return toRGB(v)
-                return v
-              },
-            })
-          }
+          const win = doc.defaultView
+          if (win && win !== window) patchGCS(win)
         },
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
@@ -106,6 +113,7 @@ export default function App() {
     try {
       await html2pdf().set(opt).from(previewRef.current).save()
     } finally {
+      window.getComputedStyle = origGCS
       setDownloading(false)
     }
   }
