@@ -41,13 +41,25 @@ export default function App() {
     return marked.parse(markdown)
   }, [markdown])
 
+  const getFilename = useCallback(() => {
+    const match = markdown.match(/^#{1,6}\s+(.+)$/m)
+    if (!match) return 'document.pdf'
+    const slug = match[1]
+      .toLowerCase()
+      .replace(/[^a-z0-9\s-]/g, '')
+      .replace(/[\s]+/g, '-')
+      .replace(/-+/g, '-')
+      .replace(/^-|-$/g, '')
+    return slug ? `${slug}.pdf` : 'document.pdf'
+  }, [markdown])
+
   const handleDownload = async () => {
     if (!previewRef.current) return
     setDownloading(true)
 
     const opt = {
       margin: [10, 10, 10, 10],
-      filename: 'document.pdf',
+      filename: getFilename(),
       image: { type: 'jpeg', quality: 0.98 },
       html2canvas: { scale: 2 },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
