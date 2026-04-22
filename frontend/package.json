@@ -15,7 +15,7 @@
     "html2pdf.js": "^0.14.0"
   },
   "devDependencies": {
-    "@vitejs/plugin-react": "^4.3.4",
-    "vite": "^6.4.2"
+    "@vitejs/plugin-react": "^6.0.1",
+    "vite": "^8.0.9"
   }
 }
