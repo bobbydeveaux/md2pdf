@@ -66,27 +66,26 @@ export default function App() {
         onclone: (doc) => {
           // html2canvas can't parse display-p3 color() functions that
           // modern browsers (especially Safari/macOS) use in computed
-          // styles. Convert color(display-p3 r g b) to rgb() directly.
-          const toRGB = (val) => {
-            if (!val) return val
-            return val.replace(
-              /color\(display-p3\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/g,
-              (_, r, g, b, a) => {
-                const ri = Math.round(parseFloat(r) * 255)
-                const gi = Math.round(parseFloat(g) * 255)
-                const bi = Math.round(parseFloat(b) * 255)
-                if (a !== undefined && parseFloat(a) < 1) {
-                  return `rgba(${ri}, ${gi}, ${bi}, ${a})`
-                }
-                return `rgb(${ri}, ${gi}, ${bi})`
-              }
-            )
-          }
+          // styles. Scan ALL computed properties on every element and
+          // convert any color(display-p3 r g b) values to rgb().
+          const colorRe = /color\(display-p3\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/g
+          const toRGB = (val) => val.replace(colorRe, (_, r, g, b, a) => {
+            const ri = Math.round(parseFloat(r) * 255)
+            const gi = Math.round(parseFloat(g) * 255)
+            const bi = Math.round(parseFloat(b) * 255)
+            return a !== undefined && parseFloat(a) < 1
+              ? `rgba(${ri}, ${gi}, ${bi}, ${a})`
+              : `rgb(${ri}, ${gi}, ${bi})`
+          })
           doc.querySelectorAll('*').forEach((el) => {
             const cs = getComputedStyle(el)
-            el.style.color = toRGB(cs.color)
-            el.style.backgroundColor = toRGB(cs.backgroundColor)
-            el.style.borderColor = toRGB(cs.borderColor)
+            for (let i = 0; i < cs.length; i++) {
+              const prop = cs[i]
+              const val = cs.getPropertyValue(prop)
+              if (val.includes('color(')) {
+                el.style.setProperty(prop, toRGB(val))
+              }
+            }
           })
         },
       },
