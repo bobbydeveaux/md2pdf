@@ -61,7 +61,29 @@ export default function App() {
       margin: [10, 10, 10, 10],
       filename: getFilename(),
       image: { type: 'jpeg', quality: 0.98 },
-      html2canvas: { scale: 2 },
+      html2canvas: {
+        scale: 2,
+        onclone: (doc) => {
+          // html2canvas can't parse display-p3 color() functions that
+          // modern browsers use in computed styles. Convert all colors
+          // to sRGB hex via a temporary canvas context.
+          const ctx = doc.createElement('canvas').getContext('2d')
+          const toHex = (val) => {
+            if (!val || val === 'transparent' || val === 'rgba(0, 0, 0, 0)') return val
+            ctx.fillStyle = val
+            return ctx.fillStyle
+          }
+          doc.querySelectorAll('*').forEach((el) => {
+            const cs = getComputedStyle(el)
+            const color = toHex(cs.color)
+            const bg = toHex(cs.backgroundColor)
+            const border = toHex(cs.borderColor)
+            if (color) el.style.color = color
+            if (bg) el.style.backgroundColor = bg
+            if (border) el.style.borderColor = border
+          })
+        },
+      },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
     }
 
