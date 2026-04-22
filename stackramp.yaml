@@ -1,0 +1,9 @@
+name: md2pdf
+domain: md2pdf.stackramp.io
+
+frontend:
+  framework: react
+  dir: frontend
+  node_version: "20"
+
+database: false
