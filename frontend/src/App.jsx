@@ -65,22 +65,28 @@ export default function App() {
         scale: 2,
         onclone: (doc) => {
           // html2canvas can't parse display-p3 color() functions that
-          // modern browsers use in computed styles. Convert all colors
-          // to sRGB hex via a temporary canvas context.
-          const ctx = doc.createElement('canvas').getContext('2d')
-          const toHex = (val) => {
-            if (!val || val === 'transparent' || val === 'rgba(0, 0, 0, 0)') return val
-            ctx.fillStyle = val
-            return ctx.fillStyle
+          // modern browsers (especially Safari/macOS) use in computed
+          // styles. Convert color(display-p3 r g b) to rgb() directly.
+          const toRGB = (val) => {
+            if (!val) return val
+            return val.replace(
+              /color\(display-p3\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/g,
+              (_, r, g, b, a) => {
+                const ri = Math.round(parseFloat(r) * 255)
+                const gi = Math.round(parseFloat(g) * 255)
+                const bi = Math.round(parseFloat(b) * 255)
+                if (a !== undefined && parseFloat(a) < 1) {
+                  return `rgba(${ri}, ${gi}, ${bi}, ${a})`
+                }
+                return `rgb(${ri}, ${gi}, ${bi})`
+              }
+            )
           }
           doc.querySelectorAll('*').forEach((el) => {
             const cs = getComputedStyle(el)
-            const color = toHex(cs.color)
-            const bg = toHex(cs.backgroundColor)
-            const border = toHex(cs.borderColor)
-            if (color) el.style.color = color
-            if (bg) el.style.backgroundColor = bg
-            if (border) el.style.borderColor = border
+            el.style.color = toRGB(cs.color)
+            el.style.backgroundColor = toRGB(cs.backgroundColor)
+            el.style.borderColor = toRGB(cs.borderColor)
           })
         },
       },
