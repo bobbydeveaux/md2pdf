@@ -65,28 +65,39 @@ export default function App() {
         scale: 2,
         onclone: (doc) => {
           // html2canvas can't parse display-p3 color() functions that
-          // modern browsers (especially Safari/macOS) use in computed
-          // styles. Scan ALL computed properties on every element and
-          // convert any color(display-p3 r g b) values to rgb().
+          // modern browsers (Safari/macOS) return from getComputedStyle.
+          // Setting inline rgb() styles doesn't help because the browser
+          // converts them back to display-p3 on wide-gamut displays.
+          // Fix: monkey-patch getComputedStyle on the cloned document's
+          // window so html2canvas always sees sRGB values.
           const colorRe = /color\(display-p3\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/g
-          const toRGB = (val) => val.replace(colorRe, (_, r, g, b, a) => {
-            const ri = Math.round(parseFloat(r) * 255)
-            const gi = Math.round(parseFloat(g) * 255)
-            const bi = Math.round(parseFloat(b) * 255)
-            return a !== undefined && parseFloat(a) < 1
-              ? `rgba(${ri}, ${gi}, ${bi}, ${a})`
-              : `rgb(${ri}, ${gi}, ${bi})`
-          })
-          doc.querySelectorAll('*').forEach((el) => {
-            const cs = getComputedStyle(el)
-            for (let i = 0; i < cs.length; i++) {
-              const prop = cs[i]
-              const val = cs.getPropertyValue(prop)
-              if (val.includes('color(')) {
-                el.style.setProperty(prop, toRGB(val))
-              }
-            }
-          })
+          const toRGB = (val) => {
+            if (typeof val !== 'string' || !val.includes('color(')) return val
+            return val.replace(colorRe, (_, r, g, b, a) => {
+              const ri = Math.round(parseFloat(r) * 255)
+              const gi = Math.round(parseFloat(g) * 255)
+              const bi = Math.round(parseFloat(b) * 255)
+              return a !== undefined && parseFloat(a) < 1
+                ? `rgba(${ri}, ${gi}, ${bi}, ${a})`
+                : `rgb(${ri}, ${gi}, ${bi})`
+            })
+          }
+          const win = doc.defaultView || window
+          const origGetComputedStyle = win.getComputedStyle
+          win.getComputedStyle = function (el, pseudo) {
+            const cs = origGetComputedStyle.call(this, el, pseudo)
+            return new Proxy(cs, {
+              get(target, prop) {
+                if (prop === 'getPropertyValue') {
+                  return (p) => toRGB(target.getPropertyValue(p))
+                }
+                const v = target[prop]
+                if (typeof v === 'function') return v.bind(target)
+                if (typeof v === 'string') return toRGB(v)
+                return v
+              },
+            })
+          }
         },
       },
       jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' },
